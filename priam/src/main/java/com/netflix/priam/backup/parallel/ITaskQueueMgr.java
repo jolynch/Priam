@@ -26,31 +26,53 @@ package com.netflix.priam.backup.parallel;
  */
 public interface ITaskQueueMgr<E> {
 
-    public void add(E task);
+    /**
+     * Adds the provided task into the queue if it does not already exist. For performance reasons
+     * this is best effort and therefore callers are responsible for handling duplicate tasks.
+     *
+     * This method will block if the queue of tasks is full
+     * @param task The task to put onto the queue
+     */
+    void add(E task);
 
-    /*
+    /**
+     * Adds the provided task into the queue if it does not already exist. For performance reasons
+     * this is best effort and therefore callers are responsible for handling duplicate tasks.
+     *
+     * This method should not block. If no implementation is provided however this is equivalent to
+     * {@link #add(Object)}.
+     *
+     * @param task The task to put onto the queue
+     * @return if the task was successfully added to the queue. True means yes, False means no.
+     */
+    default boolean offer(E task) {
+        add(task);
+        return true;
+    }
+
+    /**
      * @return task, null if none is available.
      */
-    public E take() throws InterruptedException;
+    E take() throws InterruptedException;
 
-    /*
+    /**
      * @return true if there are tasks within queue to be processed; false otherwise.
      */
-    public Boolean hasTasks();
+    Boolean hasTasks();
 
-    /*
+    /**
      * A means to perform any post processing once the task has been completed.  If post processing is needed,
      * the consumer should notify this behavior via callback once the task is completed.
      *
      * *Note: "completed" here can mean success or failure.
      */
-    public void taskPostProcessing(E completedTask);
+    void taskPostProcessing(E completedTask);
 
 
-    public Integer getNumOfTasksToBeProessed();
+    Integer getNumOfTasksToBeProcessed();
 
-    /*
+    /**
      * @return true if all tasks completed (includes failures) for a date; false, if at least 1 task is still in queue.
      */
-    public Boolean tasksCompleted(java.util.Date date);
+    Boolean tasksCompleted(java.util.Date date);
 }

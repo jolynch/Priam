@@ -25,6 +25,14 @@ import org.slf4j.LoggerFactory;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import javax.annotation.Nullable;
+
+import com.google.common.util.concurrent.FutureCallback;
+import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.ListeningExecutorService;
+import com.google.common.util.concurrent.MoreExecutors;
+
 /*
  * Monitors files to be uploaded and assigns each file to a worker
  */
@@ -33,7 +41,7 @@ public class IncrementalConsumerMgr implements Runnable {
     private static final Logger logger = LoggerFactory.getLogger(IncrementalConsumerMgr.class);
 
     private AtomicBoolean run = new AtomicBoolean(true);
-    private ThreadPoolExecutor executor;
+    private ListeningExecutorService executor;
     private IBackupFileSystem fs;
     private ITaskQueueMgr<AbstractBackupPath> taskQueueMgr;
     private BackupPostProcessingCallback<AbstractBackupPath> callback;
@@ -58,8 +66,8 @@ public class IncrementalConsumerMgr implements Runnable {
 		 * worker queue.  Specifically, the calling will continue to perform the upload unless a worker is avaialble.
 		 */
         RejectedExecutionHandler rejectedExecutionHandler = new ThreadPoolExecutor.CallerRunsPolicy();
-        executor = new ThreadPoolExecutor(maxWorkers, maxWorkers, 60, TimeUnit.SECONDS,
-                workQueue, rejectedExecutionHandler);
+        executor = MoreExecutors.listeningDecorator(new ThreadPoolExecutor(maxWorkers, maxWorkers, 60, TimeUnit.SECONDS,
+                                                                           workQueue, rejectedExecutionHandler));
 
         callback = new IncrementalBkupPostProcessing(this.taskQueueMgr);
     }
@@ -81,17 +89,31 @@ public class IncrementalConsumerMgr implements Runnable {
                     AbstractBackupPath bp = this.taskQueueMgr.take();
 
                     IncrementalConsumer task = new IncrementalConsumer(bp, this.fs, this.callback);
-                    executor.submit(task); //non-blocking, will be rejected if the task cannot be scheduled
+                    ListenableFuture<?> upload = executor.submit(task); //non-blocking, will be rejected if the task cannot be scheduled
+                    Futures.addCallback(upload, new FutureCallback<Object>()
+                    {
+                        public void onSuccess(@Nullable Object result) { }
 
-
+                        // If the upload fails after all the retries upon retries, just put it back in the queue
+                        // so we eventually upload it.
+                        public void onFailure(Throwable t) {
+                            // Note that this is sorta best effort, if the queue
+                            boolean requeue = taskQueueMgr.offer(bp);
+                            if (requeue) {
+                                logger.info("Re-queued failed upload {}", bp.getFileName());
+                            } else {
+                                logger.error("Dropping file due to too many outstanding uploads: {}", bp.getFileName());
+                            }
+                        }
+                    });
                 } catch (InterruptedException e) {
                     logger.warn("Was interrupted while wating to dequeued a task.  Msgl: {}", e.getLocalizedMessage());
                 }
             }
 
-            //Lets not overwhelmend the node hence we will pause before checking the work queue again.
+            // Lets not overwhelm the node hence we will pause before checking the work queue again.
             try {
-                Thread.currentThread().sleep(IIncrementalBackup.INCREMENTAL_INTERVAL_IN_MILLISECS);
+                Thread.sleep(IIncrementalBackup.INCREMENTAL_INTERVAL_IN_MILLISECS);
             } catch (InterruptedException e) {
                 logger.warn("Was interrupted while sleeping until next interval run.  Msgl: {}", e.getLocalizedMessage());
             }
