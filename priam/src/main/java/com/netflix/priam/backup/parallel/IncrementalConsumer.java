@@ -56,8 +56,9 @@ public class IncrementalConsumer implements Runnable {
         logger.info("Consumer - about to upload file: {}", this.bp.getFileName());
 
         try {
-
-            new RetryableCallable<Void>() {
+            // Allow up to 30s of arbitrary failures, the upload call itself likely has retries as
+            // well so this top level retry is on top of those retries.
+            new RetryableCallable<Void>(6, 5000) {
                 @Override
                 public Void retriableCall() throws Exception {
 
@@ -76,6 +77,7 @@ public class IncrementalConsumer implements Runnable {
                         if (is == null) {
                             throw new NullPointerException("Unable to get handle on file: " + bp.getFileName());
                         }
+                        // This upload call typically has internal retries
                         fs.upload(bp, is);
                         bp.setCompressedFileSize(fs.getBytesUploaded());
                         bp.setAWSSlowDownExceptionCounter(fs.getAWSSlowDownExceptionCounter());

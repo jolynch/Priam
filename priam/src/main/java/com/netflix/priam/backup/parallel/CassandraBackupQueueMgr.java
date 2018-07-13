@@ -52,28 +52,49 @@ public class CassandraBackupQueueMgr implements ITaskQueueMgr<AbstractBackupPath
         tasksQueued = new HashSet<String>(config.getUncrementalBkupQueueSize()); //Key to task is the S3 absolute path (BASE/REGION/CLUSTER/TOKEN/[yyyymmddhhmm]/[SST|SNP|META]/KEYSPACE/COLUMNFAMILY/FILE
     }
 
+
     @Override
-    /*
-     * Add task to queue if it does not already exist.  For performance reasons, this behavior does not acquire a lock on the queue hence
-	 * it is up to the caller to handle possible duplicate tasks.
-	 * 
-	 * Note: will block until there is space in the queue.
-	 */
     public void add(AbstractBackupPath task) {
+        offer(task, true);
+    }
+
+    @Override
+    public boolean offer(AbstractBackupPath task)
+    {
+        return offer(task, false);
+    }
+
+    /*
+     * Add task to queue if it does not already exist. For performance reasons, this behavior does not acquire a lock on the queue hence
+     * it is up to the caller to handle possible duplicate tasks.
+     *
+     * Note: will block or not based on the block parameter
+     */
+    private boolean offer(AbstractBackupPath task, boolean block)
+    {
+        boolean success = false;
         if (!tasksQueued.contains(task.getRemotePath())) {
             tasksQueued.add(task.getRemotePath());
             try {
-                tasks.put(task); //block until space becomes available in queue
+                if (block)
+                {
+                    tasks.put(task); //block until space becomes available in queue
+                    success = true;
+                }
+                else
+                {
+                    success = tasks.offer(task);
+                }
                 logger.debug("Queued file {} within CF {}", task.getFileName(), task.getColumnFamily());
 
             } catch (InterruptedException e) {
-                logger.warn("Interrupted waiting for the task queue to have free space, not fatal will just move on.   Error Msg: {}", e.getLocalizedMessage());
+                logger.warn("Interrupted waiting for the task queue to have free space, not fatal will just move on. Error Msg: {}", e.getLocalizedMessage());
             }
         } else {
             logger.debug("Already in queue, no-op.  File: {}", task.getRemotePath());
         }
 
-        return;
+        return success;
     }
 
     @Override
@@ -122,7 +143,7 @@ public class CassandraBackupQueueMgr implements ITaskQueueMgr<AbstractBackupPath
 	/*
 	 * @return num of pending tasks.  Note, the result is a best guess, don't rely on it to be 100% accurate.
 	 */
-    public Integer getNumOfTasksToBeProessed() {
+    public Integer getNumOfTasksToBeProcessed() {
         return tasks.size();
     }
 
