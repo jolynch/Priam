@@ -725,31 +725,41 @@ public interface IConfiguration {
      * Post restore hook enabled state. If enabled, jar represented by getPostRepairHook is called once download of files is complete, before starting Cassandra.
      * @return if post restore hook is enabled
      */
-    public boolean isPostRestoreHookEnabled();
+    default boolean isPostRestoreHookEnabled() {
+        return false;
+    }
 
     /**
      * Post restore hook to be executed
      * @return post restore hook to be executed once restore is complete
      */
-    public String getPostRestoreHook();
+    default String getPostRestoreHook() {
+        return "";
+    }
 
 
     /**
      * HeartBeat file of post restore hook
      * @return file that indicates heartbeat of post restore hook
      */
-    public String getPostRestoreHookHeartbeatFileName();
+    default String getPostRestoreHookHeartbeatFileName() {
+        return "postrestorehook_heartbeat";
+    }
 
 
     /**
      * Done file for post restore hook
      * @return file that indicates completion of post restore hook
      */
-    public String getPostRestoreHookDoneFileName();
+    default String getPostRestoreHookDoneFileName() {
+        return "postrestorehook_done";
+    }
 
     /**
      * Maximum time Priam has to wait for post restore hook sub-process to complete successfully
      * @return time out for post restore hook in days
      */
-    public int getPostRestoreHookTimeOutInDays();
+    default int getPostRestoreHookTimeOutInDays() {
+        return 2;
+    }
 }
