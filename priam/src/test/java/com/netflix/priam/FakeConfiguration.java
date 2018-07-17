@@ -795,7 +795,7 @@ public class FakeConfiguration implements IConfiguration {
 
     @Override
     public String getPostRestoreHook() {
-        return "iostat -d 2 10";
+        return "echo";
     }
 
     @Override
@@ -806,10 +806,5 @@ public class FakeConfiguration implements IConfiguration {
     @Override
     public String getPostRestoreHookDoneFileName() {
         return System.getProperty("java.io.tmpdir") + File.separator + "postrestorehook.done";
-    }
-
-    @Override
-    public int getPostRestoreHookTimeOutInDays() {
-        return 2;
     }
 }
