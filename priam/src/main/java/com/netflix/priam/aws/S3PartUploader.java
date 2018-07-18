@@ -37,6 +37,7 @@ public class S3PartUploader extends BoundedExponentialRetryCallable<Void>
     private AtomicInteger partsUploaded = null; //num of data parts successfully uploaded
 
     private static final Logger logger = LoggerFactory.getLogger(S3PartUploader.class);
+    // Defaults lead to a maximum of 12.5 seconds of retries for a given part
     private static final int MAX_RETRIES = 5;
     private static final int DEFAULT_MIN_SLEEP_MS = 200;
 

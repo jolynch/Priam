@@ -57,14 +57,17 @@ public class IncrementalConsumerMgr implements Runnable {
 		 * Too many threads on the other hand will slow down the whole system due to excessive context switches - and lead to same symptoms.
 		 */
         int maxWorkers = config.getIncrementalBkupMaxConsumers();
-        /*
-		 * ThreadPoolExecutor will move the file to be uploaded as a Runnable task in the work queue.
-		 */
+
+        // Backwards compatibility with the old sync implementation
+        if (!config.isIncrBackupParallelEnabled())
+            maxWorkers = 1;
+
+		// ThreadPoolExecutor will move the file to be uploaded as a Runnable task in the work queue.
         BlockingQueue<Runnable> workQueue = new ArrayBlockingQueue<Runnable>(config.getIncrementalBkupMaxConsumers() * 2);
-		/*
-		 * If there all workers are busy, the calling thread for the submit() will itself upload the file.  This is a way to throttle how many files are moved to the
-		 * worker queue.  Specifically, the calling will continue to perform the upload unless a worker is avaialble.
-		 */
+
+        // If there all workers are busy, the calling thread for the submit() will itself upload the file.
+        // This is a way to throttle how many files are moved to the worker queue.  Specifically, the calling will
+        // continue to perform the upload unless a worker is avaialble.
         RejectedExecutionHandler rejectedExecutionHandler = new ThreadPoolExecutor.CallerRunsPolicy();
         executor = MoreExecutors.listeningDecorator(new ThreadPoolExecutor(maxWorkers, maxWorkers, 60, TimeUnit.SECONDS,
                                                                            workQueue, rejectedExecutionHandler));
@@ -90,24 +93,20 @@ public class IncrementalConsumerMgr implements Runnable {
 
                     IncrementalConsumer task = new IncrementalConsumer(bp, this.fs, this.callback);
                     ListenableFuture<?> upload = executor.submit(task); //non-blocking, will be rejected if the task cannot be scheduled
-                    Futures.addCallback(upload, new FutureCallback<Object>()
-                    {
+                    Futures.addCallback(upload, new FutureCallback<Object>() {
                         public void onSuccess(@Nullable Object result) { }
 
-                        // If the upload fails after all the retries upon retries, just put it back in the queue
-                        // so we eventually upload it.
                         public void onFailure(Throwable t) {
-                            // Note that this is sorta best effort, if the queue
-                            boolean requeue = taskQueueMgr.offer(bp);
-                            if (requeue) {
-                                logger.info("Re-queued failed upload {}", bp.getFileName());
-                            } else {
-                                logger.error("Dropping file due to too many outstanding uploads: {}", bp.getFileName());
-                            }
+                            // The post processing hook is responsible for removing the task from the de-duplicating
+                            // HashSet, so we want to do the safe thing here and remove it just in case so the
+                            // producers can re-enqueue this file in the next iteration.
+                            // Note that this should be an abundance of caution as the IncrementalConsumer _should_
+                            // have deleted the task from the queue when it internally failed.
+                            taskQueueMgr.taskPostProcessing(bp);
                         }
                     });
                 } catch (InterruptedException e) {
-                    logger.warn("Was interrupted while wating to dequeued a task.  Msgl: {}", e.getLocalizedMessage());
+                    logger.warn("Was interrupted while waiting to dequeue a task.  Msg: {}", e.getLocalizedMessage());
                 }
             }
 

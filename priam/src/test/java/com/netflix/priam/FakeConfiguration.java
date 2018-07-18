@@ -725,7 +725,7 @@ public class FakeConfiguration implements IConfiguration {
     }
 
     @Override
-    public int getUncrementalBkupQueueSize() {
+    public int getIncrementalBkupQueueSize() {
         return 100;
     }
 

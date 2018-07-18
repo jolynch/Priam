@@ -64,7 +64,6 @@ public class IncrementalBackupProducer extends AbstractBackup implements IIncrem
         this.incrementalConsumerMgr = new IncrementalConsumerMgr(this.taskQueueMgr, backupFileSystemCtx.getFileStrategy(config), super.config);
         Thread consumerMgr = new Thread(this.incrementalConsumerMgr);
         consumerMgr.start();
-
     }
 
     @Override

@@ -22,14 +22,10 @@ import com.netflix.priam.aws.UpdateCleanupPolicy;
 import com.netflix.priam.aws.UpdateSecuritySettings;
 import com.netflix.priam.backup.CommitLogBackupTask;
 import com.netflix.priam.backup.IncrementalBackup;
-import com.netflix.priam.restore.Restore;
 import com.netflix.priam.backup.SnapshotBackup;
 import com.netflix.priam.backup.parallel.IncrementalBackupProducer;
 import com.netflix.priam.cluster.management.FlushTask;
 import com.netflix.priam.identity.InstanceIdentity;
-import com.netflix.priam.restore.AwsCrossAccountCryptographyRestoreStrategy;
-import com.netflix.priam.restore.EncryptedRestoreStrategy;
-import com.netflix.priam.restore.GoogleCryptographyRestoreStrategy;
 import com.netflix.priam.restore.RestoreContext;
 import com.netflix.priam.scheduler.PriamScheduler;
 import com.netflix.priam.scheduler.TaskTimer;
@@ -94,13 +90,8 @@ public class PriamServer {
 
             // Start the Incremental backup schedule if enabled
             if (config.isIncrBackup()) {
-                if (!config.isIncrBackupParallelEnabled()) {
-                    scheduler.addTask(IncrementalBackup.JOBNAME, IncrementalBackup.class, IncrementalBackup.getTimer());
-                    logger.info("Added incremental synchronous bkup");
-                } else {
-                    scheduler.addTask(IncrementalBackupProducer.JOBNAME, IncrementalBackupProducer.class, IncrementalBackupProducer.getTimer());
-                    logger.info("Added incremental async-synchronous bkup, next fired time: {}", IncrementalBackupProducer.getTimer().getTrigger().getNextFireTime());
-                }
+                scheduler.addTask(IncrementalBackupProducer.JOBNAME, IncrementalBackupProducer.class, IncrementalBackupProducer.getTimer());
+                logger.info("Added incremental async-synchronous bkup, next fired time: {}", IncrementalBackupProducer.getTimer().getTrigger().getNextFireTime());
             }
         }
 

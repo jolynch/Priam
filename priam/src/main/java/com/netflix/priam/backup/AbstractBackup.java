@@ -87,7 +87,12 @@ public abstract class AbstractBackup extends Task implements EventGenerator<Back
             try {
                 logger.info("About to upload file {} for backup", file.getCanonicalFile());
 
-                AbstractBackupPath abp = new RetryableCallable<AbstractBackupPath>(3, RetryableCallable.DEFAULT_WAIT_TIME) {
+                // Allow up to 30s of arbitrary failures at the top level. The upload call itself typically has retries
+                // as well so this top level retry is on top of those retries. Assuming that each call to upload has
+                // ~30s maximum of retries this yields about 3.5 minutes of retries at the top level since
+                // (6 * (5 + 30) = 210 seconds). Even if this fails, however, higher level schedulers (e.g. in
+                // incremental) will hopefully re-enqueue.
+                AbstractBackupPath abp = new RetryableCallable<AbstractBackupPath>(6, 5000) {
                     public AbstractBackupPath retriableCall() throws Exception {
                         upload(bp);
                         file.delete();
