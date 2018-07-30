@@ -87,7 +87,12 @@ public abstract class AbstractBackup extends Task implements EventGenerator<Back
             try {
                 logger.info("About to upload file {} for backup", file.getCanonicalFile());
 
-                AbstractBackupPath abp = new RetryableCallable<AbstractBackupPath>(3, RetryableCallable.DEFAULT_WAIT_TIME) {
+                // Allow up to 30s of arbitrary failures at the top level. The upload call itself typically has retries
+                // as well so this top level retry is on top of those retries. Assuming that each call to upload has
+                // ~30s maximum of retries this yields about 3.5 minutes of retries at the top level since
+                // (6 * (5 + 30) = 210 seconds). Even if this fails, however, higher level schedulers (e.g. in
+                // incremental) will hopefully re-enqueue.
+                AbstractBackupPath abp = new RetryableCallable<AbstractBackupPath>(6, 5000) {
                     public AbstractBackupPath retriableCall() throws Exception {
                         upload(bp);
                         file.delete();
@@ -110,34 +115,27 @@ public abstract class AbstractBackup extends Task implements EventGenerator<Back
 
 
     /**
-     * Upload specified file (RandomAccessFile) with retries
+     * Upload specified file (RandomAccessFile)
      *
      * @param bp backup path to be uplaoded.
      */
     protected void upload(final AbstractBackupPath bp) throws Exception {
-        new RetryableCallable<Void>() {
-            @Override
-            public Void retriableCall() throws Exception {
-                java.io.InputStream is = null;
-                try {
-                    is = bp.localReader();
-                    if (is == null) {
-                        throw new NullPointerException("Unable to get handle on file: " + bp.fileName);
-                    }
-                    fs.upload(bp, is);
-                    bp.setCompressedFileSize(fs.getBytesUploaded());
-                    bp.setAWSSlowDownExceptionCounter(fs.getAWSSlowDownExceptionCounter());
-                    return null;
-                } catch (Exception e) {
-                    logger.error("Exception uploading local file {},  releasing handle, and will retry.", bp.backupFile.getCanonicalFile());
-                    if (is != null) {
-                        is.close();
-                    }
-                    throw e;
-                }
-
+        java.io.InputStream is = null;
+        try {
+            is = bp.localReader();
+            if (is == null) {
+                throw new NullPointerException("Unable to get handle on file: " + bp.fileName);
             }
-        }.call();
+            fs.upload(bp, is);
+            bp.setCompressedFileSize(fs.getBytesUploaded());
+            bp.setAWSSlowDownExceptionCounter(fs.getAWSSlowDownExceptionCounter());
+        } catch (Exception e) {
+            logger.error("Exception uploading local file {},  releasing handle, and will retry.", bp.backupFile.getCanonicalFile());
+            if (is != null) {
+                is.close();
+            }
+            throw e;
+        }
     }
 
     protected final void initiateBackup(String monitoringFolder, BackupRestoreUtil backupRestoreUtil) throws IllegalArgumentException, Exception {

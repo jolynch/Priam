@@ -86,7 +86,7 @@ public class IncrementalConsumerMgr implements Runnable {
 
             while (this.taskQueueMgr.hasTasks()) {
                 try {
-                    AbstractBackupPath bp = this.taskQueueMgr.take();
+                    final AbstractBackupPath bp = this.taskQueueMgr.take();
 
                     IncrementalConsumer task = new IncrementalConsumer(bp, this.fs, this.callback);
                     ListenableFuture<?> upload = executor.submit(task); //non-blocking, will be rejected if the task cannot be scheduled
@@ -94,16 +94,13 @@ public class IncrementalConsumerMgr implements Runnable {
                     {
                         public void onSuccess(@Nullable Object result) { }
 
-                        // If the upload fails after all the retries upon retries, just put it back in the queue
-                        // so we eventually upload it.
                         public void onFailure(Throwable t) {
-                            // Note that this is sorta best effort, if the queue
-                            boolean requeue = taskQueueMgr.offer(bp);
-                            if (requeue) {
-                                logger.info("Re-queued failed upload {}", bp.getFileName());
-                            } else {
-                                logger.error("Dropping file due to too many outstanding uploads: {}", bp.getFileName());
-                            }
+                            // The post processing hook is responsible for removing the task from the de-duplicating
+                            // HashSet, so we want to do the safe thing here and remove it just in case so the
+                            // producers can re-enqueue this file in the next iteration.
+                            // Note that this should be an abundance of caution as the IncrementalConsumer _should_
+                            // have deleted the task from the queue when it internally failed.
+                            taskQueueMgr.taskPostProcessing(bp);
                         }
                     });
                 } catch (InterruptedException e) {

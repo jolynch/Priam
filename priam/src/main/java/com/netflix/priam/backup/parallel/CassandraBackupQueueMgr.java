@@ -48,53 +48,33 @@ public class CassandraBackupQueueMgr implements ITaskQueueMgr<AbstractBackupPath
 
     @Inject
     public CassandraBackupQueueMgr(IConfiguration config) {
-        tasks = new ArrayBlockingQueue<AbstractBackupPath>(config.getUncrementalBkupQueueSize());
-        tasksQueued = new HashSet<String>(config.getUncrementalBkupQueueSize()); //Key to task is the S3 absolute path (BASE/REGION/CLUSTER/TOKEN/[yyyymmddhhmm]/[SST|SNP|META]/KEYSPACE/COLUMNFAMILY/FILE
-    }
-
-
-    @Override
-    public void add(AbstractBackupPath task) {
-        offer(task, true);
-    }
-
-    @Override
-    public boolean offer(AbstractBackupPath task)
-    {
-        return offer(task, false);
+        tasks = new ArrayBlockingQueue<AbstractBackupPath>(config.getIncrementalBkupQueueSize());
+        // Key to task is the S3 absolute path (BASE/REGION/CLUSTER/TOKEN/[yyyymmddhhmm]/[SST|SNP|META]/KEYSPACE/COLUMNFAMILY/FILE
+        tasksQueued = new HashSet<String>(config.getIncrementalBkupQueueSize());
     }
 
     /*
      * Add task to queue if it does not already exist. For performance reasons, this behavior does not acquire a lock on the queue hence
      * it is up to the caller to handle possible duplicate tasks.
      *
-     * Note: will block or not based on the block parameter
+     * Note: will block
      */
-    private boolean offer(AbstractBackupPath task, boolean block)
+    @Override
+    public void add(AbstractBackupPath task)
     {
-        boolean success = false;
         if (!tasksQueued.contains(task.getRemotePath())) {
             tasksQueued.add(task.getRemotePath());
             try {
-                if (block)
-                {
-                    tasks.put(task); //block until space becomes available in queue
-                    success = true;
-                }
-                else
-                {
-                    success = tasks.offer(task);
-                }
+                // block until space becomes available in queue
+                tasks.put(task);
                 logger.debug("Queued file {} within CF {}", task.getFileName(), task.getColumnFamily());
-
             } catch (InterruptedException e) {
                 logger.warn("Interrupted waiting for the task queue to have free space, not fatal will just move on. Error Msg: {}", e.getLocalizedMessage());
+                tasksQueued.remove(task.getRemotePath());
             }
         } else {
             logger.debug("Already in queue, no-op.  File: {}", task.getRemotePath());
         }
-
-        return success;
     }
 
     @Override

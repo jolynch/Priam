@@ -36,21 +36,6 @@ public interface ITaskQueueMgr<E> {
     void add(E task);
 
     /**
-     * Adds the provided task into the queue if it does not already exist. For performance reasons
-     * this is best effort and therefore callers are responsible for handling duplicate tasks.
-     *
-     * This method should not block. If no implementation is provided however this is equivalent to
-     * {@link #add(Object)}.
-     *
-     * @param task The task to put onto the queue
-     * @return if the task was successfully added to the queue. True means yes, False means no.
-     */
-    default boolean offer(E task) {
-        add(task);
-        return true;
-    }
-
-    /**
      * @return task, null if none is available.
      */
     E take() throws InterruptedException;
