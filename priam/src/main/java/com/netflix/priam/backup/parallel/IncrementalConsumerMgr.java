@@ -18,10 +18,12 @@ package com.netflix.priam.backup.parallel;
 import com.netflix.priam.IConfiguration;
 import com.netflix.priam.backup.AbstractBackupPath;
 import com.netflix.priam.backup.IBackupFileSystem;
-import com.netflix.priam.backup.IIncrementalBackup;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -45,6 +47,7 @@ public class IncrementalConsumerMgr implements Runnable {
     private IBackupFileSystem fs;
     private ITaskQueueMgr<AbstractBackupPath> taskQueueMgr;
     private BackupPostProcessingCallback<AbstractBackupPath> callback;
+    private final int incrementalDelay;
 
     public IncrementalConsumerMgr(ITaskQueueMgr<AbstractBackupPath> taskQueueMgr, IBackupFileSystem fs
             , IConfiguration config
@@ -52,19 +55,20 @@ public class IncrementalConsumerMgr implements Runnable {
         this.taskQueueMgr = taskQueueMgr;
         this.fs = fs;
 
-		/*
+        incrementalDelay = config.getIncrementalBkupIntervalMs();
+
+        /*
          * Too few threads, the queue will build up, consuming a lot of memory.
 		 * Too many threads on the other hand will slow down the whole system due to excessive context switches - and lead to same symptoms.
 		 */
         int maxWorkers = config.getIncrementalBkupMaxConsumers();
-        /*
-		 * ThreadPoolExecutor will move the file to be uploaded as a Runnable task in the work queue.
-		 */
+
+        // ThreadPoolExecutor will move the file to be uploaded as a Runnable task in the work queue.
         BlockingQueue<Runnable> workQueue = new ArrayBlockingQueue<Runnable>(config.getIncrementalBkupMaxConsumers() * 2);
-		/*
-		 * If there all workers are busy, the calling thread for the submit() will itself upload the file.  This is a way to throttle how many files are moved to the
-		 * worker queue.  Specifically, the calling will continue to perform the upload unless a worker is avaialble.
-		 */
+
+        // If there all workers are busy, the calling thread for the submit() will itself upload the file.
+        // This is a way to throttle how many files are moved to the worker queue.  Specifically, the calling will
+        // continue to perform the upload unless a worker is avaialble.
         RejectedExecutionHandler rejectedExecutionHandler = new ThreadPoolExecutor.CallerRunsPolicy();
         executor = MoreExecutors.listeningDecorator(new ThreadPoolExecutor(maxWorkers, maxWorkers, 60, TimeUnit.SECONDS,
                                                                            workQueue, rejectedExecutionHandler));
@@ -83,37 +87,35 @@ public class IncrementalConsumerMgr implements Runnable {
     @Override
     public void run() {
         while (this.run.get()) {
-
             while (this.taskQueueMgr.hasTasks()) {
                 try {
                     AbstractBackupPath bp = this.taskQueueMgr.take();
 
+                    if (bp == null)
+                        break;
+
                     IncrementalConsumer task = new IncrementalConsumer(bp, this.fs, this.callback);
                     ListenableFuture<?> upload = executor.submit(task); //non-blocking, will be rejected if the task cannot be scheduled
-                    Futures.addCallback(upload, new FutureCallback<Object>()
-                    {
+                    Futures.addCallback(upload, new FutureCallback<Object>() {
                         public void onSuccess(@Nullable Object result) { }
 
-                        // If the upload fails after all the retries upon retries, just put it back in the queue
-                        // so we eventually upload it.
                         public void onFailure(Throwable t) {
-                            // Note that this is sorta best effort, if the queue
-                            boolean requeue = taskQueueMgr.offer(bp);
-                            if (requeue) {
-                                logger.info("Re-queued failed upload {}", bp.getFileName());
-                            } else {
-                                logger.error("Dropping file due to too many outstanding uploads: {}", bp.getFileName());
-                            }
+                            // The post processing hook is responsible for removing the task from the de-duplicating
+                            // HashSet, so we want to do the safe thing here and remove it just in case so the
+                            // producers can re-enqueue this file in the next iteration.
+                            // Note that this should be an abundance of caution as the IncrementalConsumer _should_
+                            // have deleted the task from the queue when it internally failed.
+                            taskQueueMgr.taskPostProcessing(bp);
                         }
                     });
                 } catch (InterruptedException e) {
-                    logger.warn("Was interrupted while wating to dequeued a task.  Msgl: {}", e.getLocalizedMessage());
+                    logger.warn("Was interrupted while waiting to dequeue a task.  Msg: {}", e.getLocalizedMessage());
                 }
             }
 
             // Lets not overwhelm the node hence we will pause before checking the work queue again.
             try {
-                Thread.sleep(IIncrementalBackup.INCREMENTAL_INTERVAL_IN_MILLISECS);
+                Thread.sleep(incrementalDelay);
             } catch (InterruptedException e) {
                 logger.warn("Was interrupted while sleeping until next interval run.  Msgl: {}", e.getLocalizedMessage());
             }

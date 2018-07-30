@@ -643,17 +643,32 @@ public interface IConfiguration {
      */
     public boolean isDualAccount();
 
-    public Boolean isIncrBackupParallelEnabled();
 
-    /*
-     * The number of workers for parallel uploads.
+    /**
+     * This allows the incremental backup manager to use multiple consumer threads
+     * controlled by {@link #getIncrementalBkupMaxConsumers()}
+     * @return If multithreaded parallel backup should be used
+     * @deprecated use {@link #isIncrBackup()} instead. All incremental backups should be async
      */
-    public int getIncrementalBkupMaxConsumers();
+    @Deprecated
+    Boolean isIncrBackupParallelEnabled();
 
-    /*
-     * The max number of files queued to be uploaded.
+    /**
+     * @return The number of workers for parallel uploads.
      */
-    public int getUncrementalBkupQueueSize();
+    int getIncrementalBkupMaxConsumers();
+
+    /**
+     * @return The max number of files queued to be uploaded.
+     */
+    int getIncrementalBkupQueueSize();
+
+    /**
+     * @return The amount of time to wait between incremental backup enqueue runs.
+     */
+    default int getIncrementalBkupIntervalMs() {
+        return 10 * 1000;
+    }
 
     /**
      * @return tombstone_warn_threshold in C* yaml

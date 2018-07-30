@@ -725,10 +725,17 @@ public class FakeConfiguration implements IConfiguration {
     }
 
     @Override
-    public int getUncrementalBkupQueueSize() {
+    public int getIncrementalBkupQueueSize() {
         return 100;
     }
 
+    /**
+     * @return The amount of time to wait between incremental backup enqueue runs.
+     */
+    @Override
+    public int getIncrementalBkupIntervalMs() {
+        return 0;
+    }
     /**
      * @return tombstone_warn_threshold in yaml
      */

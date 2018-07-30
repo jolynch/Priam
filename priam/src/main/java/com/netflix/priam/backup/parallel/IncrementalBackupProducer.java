@@ -31,29 +31,27 @@ import org.slf4j.LoggerFactory;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
 
 @Singleton
-public class IncrementalBackupProducer extends AbstractBackup implements IIncrementalBackup {
+public class IncrementalBackupProducer extends AbstractBackup {
 
     public static final String JOBNAME = "ParallelIncremental";
     private static final Logger logger = LoggerFactory.getLogger(IncrementalBackupProducer.class);
 
     private final List<String> incrementalRemotePaths = new ArrayList<String>();
-    private IncrementalMetaData metaData;
     private IncrementalConsumerMgr incrementalConsumerMgr;
     private ITaskQueueMgr<AbstractBackupPath> taskQueueMgr;
     private BackupRestoreUtil backupRestoreUtil;
 
     @Inject
     public IncrementalBackupProducer(IConfiguration config, Provider<AbstractBackupPath> pathFactory, IFileSystemContext backupFileSystemCtx
-            , IncrementalMetaData metaData
             , @Named("backup") ITaskQueueMgr taskQueueMgr
             , BackupNotificationMgr backupNotificationMgr
     ) {
 
         super(config, backupFileSystemCtx, pathFactory, backupNotificationMgr);
         this.taskQueueMgr = taskQueueMgr;
-        this.metaData = metaData;
 
         init(backupFileSystemCtx);
     }
@@ -64,11 +62,10 @@ public class IncrementalBackupProducer extends AbstractBackup implements IIncrem
         this.incrementalConsumerMgr = new IncrementalConsumerMgr(this.taskQueueMgr, backupFileSystemCtx.getFileStrategy(config), super.config);
         Thread consumerMgr = new Thread(this.incrementalConsumerMgr);
         consumerMgr.start();
-
     }
 
     @Override
-    protected void backupUploadFlow(File backupDir) throws Exception {
+    protected void backupUploadFlow(File backupDir) {
         for (final File file : backupDir.listFiles()) {
             try {
                 final AbstractBackupPath bp = pathFactory.get();
@@ -78,8 +75,8 @@ public class IncrementalBackupProducer extends AbstractBackup implements IIncrem
                 logger.warn("Unable to queue incremental file, treating as non-fatal and moving on to next.  Msg: {} Fail to queue file: {}",
                         e.getLocalizedMessage(), file.getAbsolutePath());
             }
-
-        } //end enqueuing all incremental files for a CF
+        // end enqueuing all incremental files for a CF
+        }
     }
 
     @Override
@@ -93,62 +90,41 @@ public class IncrementalBackupProducer extends AbstractBackup implements IIncrem
 
     @Override
     public void execute() throws Exception {
-        //Clearing remotePath List
+        // Clearing remotePath List
         incrementalRemotePaths.clear();
         initiateBackup("backups", backupRestoreUtil);
         return;
     }
 
-    public void postProcessing() {
-        /*
-        *
-        * Upload the audit file of completed uploads
-        *
-		List<AbstractBackupPath> uploadedFiles = upload(backupDir, BackupFileType.SST);                 
-		if ( ! uploadedFiles.isEmpty() ) {
-   		String incrementalUploadTime = AbstractBackupPath.formatDate(uploadedFiles.get(0).getTime()); //format of yyyymmddhhmm (e.g. 201505060901)
-   		String metaFileName = "meta_" + columnFamilyDir.getName() + "_" + incrementalUploadTime;
-   		logger.info("Uploading meta file for incremental backup: " + metaFileName); 
-   		this.metaData.setMetaFileName(metaFileName);
-   		this.metaData.set(uploadedFiles, incrementalUploadTime);
-   		logger.info("Uploaded meta file for incremental backup: " + metaFileName);                	
-		}
-        */
-
-    	/* *
-         * Notify observers once all incrremental uploads completed
-    	 * 
-        if(incrementalRemotePaths.size() > 0)
-        {
-        	notifyObservers();
-        }
-        * */
-
+    // For backwards compatibility with the old Sync method of incrementals
+    public void executeSync() throws Exception {
+        execute();
+        CountDownLatch backupDone = new CountDownLatch(1);
+        new Thread(() -> {
+            while (!taskQueueMgr.allTasksCompleted()) {
+                try {
+                    logger.info("Still not done: {}", taskQueueMgr.allTasksCompleted());
+                    logger.info("wat: {}", taskQueueMgr.getNumOfTasksToBeProcessed());
+                    Thread.sleep(1000);
+                } catch (InterruptedException e) {
+                    logger.error("Got interrupted before incremental backup finished");
+                }
+            }
+            backupDone.countDown();
+        }).start();
+        // Wait for incremental backup to finish
+        backupDone.await();
     }
 
-    @Override
-	/*
+	/**
 	 * @return an identifier of purpose of the task.
 	 */
+    @Override
     public String getName() {
         return JOBNAME;
     }
 
-    @Override
-    public long getNumPendingFiles() {
-        throw new UnsupportedOperationException();
+    public static TaskTimer getTimer(IConfiguration config) {
+        return new SimpleTimer(JOBNAME, config.getIncrementalBkupIntervalMs());
     }
-
-    /**
-     * @return Timer that run every 10 Sec
-     */
-    public static TaskTimer getTimer() {
-        return new SimpleTimer(JOBNAME, INCREMENTAL_INTERVAL_IN_MILLISECS);
-    }
-
-    @Override
-    public String getJobName() {
-        return JOBNAME;
-    }
-
 }

@@ -16,7 +16,8 @@
  */
 package com.netflix.priam.cli;
 
-import com.netflix.priam.backup.IncrementalBackup;
+import com.netflix.priam.backup.parallel.IncrementalBackupProducer;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -26,11 +27,11 @@ public class IncrementalBackuper {
     public static void main(String[] args) {
         try {
             Application.initialize();
-            IncrementalBackup backuper = Application.getInjector().getInstance(IncrementalBackup.class);
+            final IncrementalBackupProducer backup = Application.getInjector().getInstance(IncrementalBackupProducer.class);
             try {
-                backuper.execute();
+                backup.executeSync();
             } catch (Exception e) {
-                logger.error("Unable to backup: ", e);
+                logger.error("Unable to complete incremental backup: ", e);
             }
         } finally {
             Application.shutdownAdditionalThreads();

@@ -21,6 +21,7 @@ import com.google.inject.Guice;
 import com.google.inject.Injector;
 import com.google.inject.Key;
 import com.google.inject.name.Names;
+import com.netflix.priam.backup.parallel.IncrementalBackupProducer;
 import mockit.Mock;
 import mockit.MockUp;
 import org.apache.cassandra.tools.NodeProbe;
@@ -64,32 +65,15 @@ public class TestBackup {
     public void testSnapshotBackup() throws Exception {
         filesystem.setupTest();
         SnapshotBackup backup = injector.getInstance(SnapshotBackup.class);
-
-//
-//        backup.execute();
-//        Assert.assertEquals(3, filesystem.uploadedFiles.size());
-//        System.out.println("***** "+filesystem.uploadedFiles.size());
-//        boolean metafile = false;
-//        for (String filePath : expectedFiles)
-//            Assert.assertTrue(filesystem.uploadedFiles.contains(filePath));
-//
-//        for(String filepath : filesystem.uploadedFiles){
-//            if( filepath.endsWith("meta.json")){
-//                metafile = true;
-//                break;
-//            }
-//        }
-//        Assert.assertTrue(metafile);
-
     }
 
     @Test
     public void testIncrementalBackup() throws Exception {
         filesystem.setupTest();
         generateIncrementalFiles();
-        IncrementalBackup backup = injector.getInstance(IncrementalBackup.class);
-        backup.execute();
-        Assert.assertEquals(5, filesystem.uploadedFiles.size());
+        IncrementalBackupProducer backup = injector.getInstance(IncrementalBackupProducer.class);
+        backup.executeSync();
+        Assert.assertEquals(4, filesystem.uploadedFiles.size());
         for (String filePath : expectedFiles)
             Assert.assertTrue(filesystem.uploadedFiles.contains(filePath));
     }
@@ -130,9 +114,10 @@ public class TestBackup {
             if (systemFilePath.contains("schema_columns"))
                 expectedFiles.add(file.getAbsolutePath());
         }
-        IncrementalBackup backup = injector.getInstance(IncrementalBackup.class);
-        backup.execute();
-        Assert.assertEquals(8, filesystem.uploadedFiles.size());
+        IncrementalBackupProducer backup = injector.getInstance(IncrementalBackupProducer.class);
+        backup.executeSync();
+        logger.info("{}",filesystem.uploadedFiles);
+        Assert.assertEquals(6, filesystem.uploadedFiles.size());
         for (String filePath : expectedFiles)
             Assert.assertTrue(filesystem.uploadedFiles.contains(filePath));
     }

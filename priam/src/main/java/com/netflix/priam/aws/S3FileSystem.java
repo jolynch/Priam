@@ -147,7 +147,7 @@ public class S3FileSystem extends S3FileSystemBase implements S3FileSystemMBean 
                 ObjectMetadata objectMetadata = new ObjectMetadata();
                 objectMetadata.setContentLength(chunk.length);
                 PutObjectRequest putObjectRequest = new PutObjectRequest(config.getBackupPrefix(), path.getRemotePath(), new ByteArrayInputStream(chunk), objectMetadata);
-                //Retry if failed.
+                // Retry if failed for about 30 seconds maximum
                 PutObjectResult upload = new BoundedExponentialRetryCallable<PutObjectResult>(1000, 10000, 5) {
                     @Override
                     public PutObjectResult retriableCall() throws Exception {
@@ -164,9 +164,9 @@ public class S3FileSystem extends S3FileSystemBase implements S3FileSystemMBean 
             } finally {
                 IOUtils.closeQuietly(in);
             }
-        } else
+        } else {
             uploadMultipart(path, in, chunkSize);
-
+        }
     }
 
     @Override

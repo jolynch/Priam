@@ -28,27 +28,12 @@ public interface ITaskQueueMgr<E> {
 
     /**
      * Adds the provided task into the queue if it does not already exist. For performance reasons
-     * this is best effort and therefore callers are responsible for handling duplicate tasks.
+     * this de-duplication is best effort and therefore callers are responsible for handling duplicate tasks.
      *
      * This method will block if the queue of tasks is full
      * @param task The task to put onto the queue
      */
     void add(E task);
-
-    /**
-     * Adds the provided task into the queue if it does not already exist. For performance reasons
-     * this is best effort and therefore callers are responsible for handling duplicate tasks.
-     *
-     * This method should not block. If no implementation is provided however this is equivalent to
-     * {@link #add(Object)}.
-     *
-     * @param task The task to put onto the queue
-     * @return if the task was successfully added to the queue. True means yes, False means no.
-     */
-    default boolean offer(E task) {
-        add(task);
-        return true;
-    }
 
     /**
      * @return task, null if none is available.
@@ -72,7 +57,7 @@ public interface ITaskQueueMgr<E> {
     Integer getNumOfTasksToBeProcessed();
 
     /**
-     * @return true if all tasks completed (includes failures) for a date; false, if at least 1 task is still in queue.
+     * @return true if all tasks completed (includes failures).
      */
-    Boolean tasksCompleted(java.util.Date date);
+    Boolean allTasksCompleted();
 }

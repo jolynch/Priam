@@ -25,6 +25,7 @@ import com.netflix.priam.IConfiguration;
 import com.netflix.priam.PriamServer;
 import com.netflix.priam.backup.*;
 import com.netflix.priam.backup.AbstractBackupPath.BackupFileType;
+import com.netflix.priam.backup.parallel.IncrementalBackupProducer;
 import com.netflix.priam.identity.IPriamInstanceFactory;
 import com.netflix.priam.identity.PriamInstance;
 import com.netflix.priam.restore.Restore;
@@ -121,7 +122,7 @@ public class BackupServlet {
     @GET
     @Path("/incremental_backup")
     public Response backupIncrementals() throws Exception {
-        scheduler.addTask("IncrementalBackup", IncrementalBackup.class, IncrementalBackup.getTimer());
+        scheduler.runTaskNow(IncrementalBackupProducer.class);
         return Response.ok(REST_SUCCESS, MediaType.APPLICATION_JSON).build();
     }
 

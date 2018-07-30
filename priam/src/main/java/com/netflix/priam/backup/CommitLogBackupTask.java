@@ -96,7 +96,7 @@ public class CommitLogBackupTask extends AbstractBackup {
     }
 
     @Override
-    protected void backupUploadFlow(File backupDir) throws Exception {
+    protected void backupUploadFlow(File backupDir) {
         //Do nothing.
     }
 

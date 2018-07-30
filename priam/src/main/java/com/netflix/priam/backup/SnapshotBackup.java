@@ -225,7 +225,6 @@ public class SnapshotBackup extends AbstractBackup {
 
     @Override
     protected void backupUploadFlow(File backupDir) throws Exception {
-
         File snapshotDir = getValidSnapshot(backupDir, snapshotName);
         // Add files to this dir
         if (null != snapshotDir)

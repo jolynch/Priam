@@ -27,6 +27,7 @@ import java.util.Date;
 import java.util.HashSet;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
+import java.util.function.Function;
 
 /*
  * 
@@ -43,70 +44,60 @@ public class CassandraBackupQueueMgr implements ITaskQueueMgr<AbstractBackupPath
 
     private static final Logger logger = LoggerFactory.getLogger(CassandraBackupQueueMgr.class);
 
-    BlockingQueue<AbstractBackupPath> tasks; //A queue of files to be uploaded
-    AbstractSet<String> tasksQueued; //A queue to determine what files have been queued, used for deduplication
+    // A queue of files to be uploaded
+    protected BlockingQueue<AbstractBackupPath> tasks;
+    // A set to determine what files have been queued, used for deduplication
+    protected AbstractSet<String> tasksQueued;
+    // Set of callbacks
 
     @Inject
     public CassandraBackupQueueMgr(IConfiguration config) {
-        tasks = new ArrayBlockingQueue<AbstractBackupPath>(config.getUncrementalBkupQueueSize());
-        tasksQueued = new HashSet<String>(config.getUncrementalBkupQueueSize()); //Key to task is the S3 absolute path (BASE/REGION/CLUSTER/TOKEN/[yyyymmddhhmm]/[SST|SNP|META]/KEYSPACE/COLUMNFAMILY/FILE
+        tasks = new ArrayBlockingQueue<>(config.getIncrementalBkupQueueSize());
+        // Key to task is the S3 absolute path e.g.
+        // (BASE/REGION/CLUSTER/TOKEN/[yyyymmddhhmm]/[SST|SNP|META]/KEYSPACE/COLUMNFAMILY/FILE
+        tasksQueued = new HashSet<>(config.getIncrementalBkupQueueSize());
     }
 
-
+    /**
+     * Adds the provided task into the queue if it does not already exist. For performance reasons
+     * this de-duplication is best effort and therefore callers are responsible for handling duplicate tasks.
+     *
+     * This method will block if the queue of tasks is full
+     * @param task The task to put onto the queue
+     */
     @Override
     public void add(AbstractBackupPath task) {
-        offer(task, true);
-    }
-
-    @Override
-    public boolean offer(AbstractBackupPath task)
-    {
-        return offer(task, false);
-    }
-
-    /*
-     * Add task to queue if it does not already exist. For performance reasons, this behavior does not acquire a lock on the queue hence
-     * it is up to the caller to handle possible duplicate tasks.
-     *
-     * Note: will block or not based on the block parameter
-     */
-    private boolean offer(AbstractBackupPath task, boolean block)
-    {
-        boolean success = false;
+        boolean itemAdded = false;
         if (!tasksQueued.contains(task.getRemotePath())) {
             tasksQueued.add(task.getRemotePath());
             try {
-                if (block)
-                {
-                    tasks.put(task); //block until space becomes available in queue
-                    success = true;
-                }
-                else
-                {
-                    success = tasks.offer(task);
-                }
+                tasks.put(task);
+                itemAdded = true;
                 logger.debug("Queued file {} within CF {}", task.getFileName(), task.getColumnFamily());
-
             } catch (InterruptedException e) {
                 logger.warn("Interrupted waiting for the task queue to have free space, not fatal will just move on. Error Msg: {}", e.getLocalizedMessage());
             }
         } else {
             logger.debug("Already in queue, no-op.  File: {}", task.getRemotePath());
+            itemAdded = true;
         }
 
-        return success;
+        // If we had an exception or otherwise were not able to put this into the underlying queue, remove it from
+        // the tracking map used for de-duplication so that it can be re-added later if needed
+        if (!itemAdded) {
+            tasksQueued.remove(task.getRemotePath());
+        }
     }
 
-    @Override
-	/*
+	/**
 	 * Guarantee delivery of a task to only one consumer.
 	 * 
 	 * @return task, null if task in queue.
 	 */
+    @Override
     public AbstractBackupPath take() throws InterruptedException {
         AbstractBackupPath task = null;
         if (!tasks.isEmpty()) {
-
             synchronized (tasks) {
                 task = tasks.poll(); //non-blocking call
             }
@@ -115,8 +106,7 @@ public class CassandraBackupQueueMgr implements ITaskQueueMgr<AbstractBackupPath
         return task;
     }
 
-    @Override
-	/*
+	/**
 	 * @return true if there are more tasks.  
 	 * 
 	 * Note: this is a best effort so the caller should call me again just before taking a task.
@@ -124,32 +114,35 @@ public class CassandraBackupQueueMgr implements ITaskQueueMgr<AbstractBackupPath
 	 * worse yet, create a deadlock.  For example, caller blocks to determine if there are more tasks and also blocks waiting to dequeue
 	 * the task.
 	 */
+    @Override
     public Boolean hasTasks() {
         return !tasks.isEmpty();
     }
 
-    @Override
-	/*
+	/**
 	 * A means to perform any post processing once the task has been completed.  If post processing is needed,
-	 * the consumer should notify this behavior via callback once the task is completed. 
-	 * 
+	 * the consumer should notify this behavior via callback once the task is completed.
+	 *
 	 * *Note: "completed" here can mean success or failure.
+     * @param completedTask The task to post process.
 	 */
+    @Override
+
     public void taskPostProcessing(AbstractBackupPath completedTask) {
         this.tasksQueued.remove(completedTask.getRemotePath());
     }
 
-    @Override
-	/*
+	/**
 	 * @return num of pending tasks.  Note, the result is a best guess, don't rely on it to be 100% accurate.
 	 */
+    @Override
     public Integer getNumOfTasksToBeProcessed() {
         return tasks.size();
     }
 
     @Override
-    public Boolean tasksCompleted(Date date) {
-        throw new UnsupportedOperationException();
+    public Boolean allTasksCompleted() {
+        return tasks.isEmpty() && tasksQueued.isEmpty();
     }
 
 }

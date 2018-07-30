@@ -26,6 +26,9 @@ import com.netflix.priam.aws.S3BackupPath;
 import com.netflix.priam.aws.auth.IS3Credential;
 import com.netflix.priam.aws.auth.S3RoleAssumptionCredential;
 import com.netflix.priam.backup.identity.FakeInstanceEnvIdentity;
+import com.netflix.priam.backup.parallel.CassandraBackupQueueMgr;
+import com.netflix.priam.backup.parallel.ITaskQueueMgr;
+import com.netflix.priam.backup.parallel.IncrementalBackupProducer;
 import com.netflix.priam.compress.ICompression;
 import com.netflix.priam.compress.SnappyCompression;
 import com.netflix.priam.cryptography.IFileCryptography;
@@ -73,7 +76,7 @@ public class BRTestModule extends AbstractModule {
 
         bind(IBackupFileSystem.class).annotatedWith(Names.named("encryptedbackup")).to(FakedS3EncryptedFileSystem.class);
         bind(IFileCryptography.class).annotatedWith(Names.named("filecryptoalgorithm")).to(PgpCryptography.class);
-        bind(IIncrementalBackup.class).to(IncrementalBackup.class);
+        bind(ITaskQueueMgr.class).annotatedWith(Names.named("backup")).to(CassandraBackupQueueMgr.class);
         bind(InstanceEnvIdentity.class).to(FakeInstanceEnvIdentity.class);
         bind(IBackupMetrics.class).to(BackupMetricsMgr.class);
         bind(ICassandraProcess.class).to(FakeCassandraProcess.class);

@@ -23,8 +23,8 @@ import org.slf4j.LoggerFactory;
 import java.util.concurrent.CancellationException;
 
 public abstract class BoundedExponentialRetryCallable<T> extends RetryableCallable<T> {
-    public final static long MAX_SLEEP = 10000;
     public final static long MIN_SLEEP = 1000;
+    public final static long MAX_SLEEP = 10000;
     public final static int MAX_RETRIES = 10;
 
     private static final Logger logger = LoggerFactory.getLogger(BoundedExponentialRetryCallable.class);
@@ -34,14 +34,14 @@ public abstract class BoundedExponentialRetryCallable<T> extends RetryableCallab
     private final ThreadSleeper sleeper = new ThreadSleeper();
 
     public BoundedExponentialRetryCallable() {
-        this.max = MAX_SLEEP;
         this.min = MIN_SLEEP;
+        this.max = MAX_SLEEP;
         this.maxRetries = MAX_RETRIES;
     }
 
     public BoundedExponentialRetryCallable(long minSleep, long maxSleep, int maxNumRetries) {
-        this.max = maxSleep;
         this.min = minSleep;
+        this.max = maxSleep;
         this.maxRetries = maxNumRetries;
     }
 
